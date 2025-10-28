@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"flag"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -15,7 +17,18 @@ import (
 	"github.com/relab/container/network"
 )
 
-const tag = "container-test"
+const containerTestTag = "container-test"
+
+// TestMain builds the test image once before running tests that depend on it.
+func TestMain(m *testing.M) {
+	// Parse flags early so testing.Verbose() works in buildTestImage.
+	flag.Parse()
+	if err := buildTestImage(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to build test image: %v\n", err)
+		os.Exit(1)
+	}
+	os.Exit(m.Run())
+}
 
 func TestPing(t *testing.T) {
 	c, err := container.NewContainer()
@@ -70,7 +83,7 @@ func TestContainerCreateAndStartAndInspectAndStop(t *testing.T) {
 
 	resp, err := c.ContainerCreate(context.Background(), &container.Config{
 		Env:   []string{"AUTHORIZED_KEYS=xyz"},
-		Image: tag,
+		Image: containerTestTag,
 		ExposedPorts: container.PortSet{
 			"22/tcp": struct{}{},
 		},
@@ -134,33 +147,60 @@ func TestContainerCreateAndStartAndInspectAndStop(t *testing.T) {
 }
 
 func TestBuild(t *testing.T) {
-	c, err := container.NewContainer()
-	if err != nil {
-		t.Fatalf("Failed to create container client: %v", err)
-	}
-
-	buildCtx, err := prepareBuildContext()
-	if err != nil {
-		t.Fatal(err)
-	}
-	resp, err := c.ImageBuild(t.Context(), buildCtx, build.ImageBuildOptions{
-		Dockerfile: "Dockerfile",
-		Tags:       []string{tag},
-	})
+	resp, err := startImageBuild(t.Context(), []string{containerTestTag})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		if err := resp.Close(); err != nil {
-			// if err := resp.Body.Close(); err != nil {
 			t.Error(err)
 		}
 	})
-
-	// if _, err = io.Copy(os.Stdout, resp.Body); err != nil {
-	if _, err = io.Copy(os.Stdout, resp); err != nil {
+	if err := build.ConsumeStream(resp, t.Output()); err != nil {
 		t.Error(err)
 	}
+}
+
+// startImageBuild initializes a Docker image build and returns the build output stream.
+// The caller owns the returned ReadCloser and must Close it after consuming the stream.
+func startImageBuild(ctx context.Context, tags []string) (io.ReadCloser, error) {
+	c, err := container.NewContainer()
+	if err != nil {
+		return nil, fmt.Errorf("create container failed: %w", err)
+	}
+	buildCtx, err := prepareBuildContext()
+	if err != nil {
+		return nil, fmt.Errorf("prepare build context failed: %w", err)
+	}
+	return c.ImageBuild(ctx, buildCtx, build.ImageBuildOptions{
+		Dockerfile: "Dockerfile",
+		Tags:       tags,
+	})
+}
+
+// buildTestImage builds the container image needed for tests.
+func buildTestImage() error {
+	resp, err := startImageBuild(context.Background(), []string{containerTestTag})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Close() }()
+
+	// Capture logs. If tests are verbose (-v), also echo to stderr live.
+	var buf bytes.Buffer
+	out := io.Writer(&buf)
+	if testing.Verbose() {
+		out = io.MultiWriter(&buf, os.Stderr)
+	}
+
+	if err := build.ConsumeStream(resp, out); err != nil {
+		// Ensure logs are visible on failure even if logging not enabled.
+		if !testing.Verbose() {
+			_, _ = io.Copy(os.Stderr, &buf)
+		}
+		return err
+	}
+	return nil
 }
 
 var (
