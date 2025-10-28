@@ -164,21 +164,23 @@ func TestBuild(t *testing.T) {
 }
 
 var (
-	dockerfile = `FROM ubuntu:rolling
+	dockerfile = `FROM alpine:latest
 
-RUN apt-get update
-RUN apt-get install -y openssh-server
+RUN apk add --no-cache openssh lsb-release && \
+    ssh-keygen -A && \
+    mkdir -p /root/.ssh && \
+    chmod 700 /root/.ssh
 
 ADD entrypoint.sh /entrypoint.sh
 
 ENTRYPOINT [ "/entrypoint.sh", "sleep", "infinity" ]
 `
 
-	entrypoint = `#!/bin/bash
+	entrypoint = `#!/bin/sh
 
 mkdir "$HOME/.ssh"
 echo "$AUTHORIZED_KEYS" > "$HOME/.ssh/authorized_keys"
-service ssh start
+/usr/sbin/sshd
 exec "$@"
 `
 )
