@@ -15,7 +15,7 @@ import (
 	"github.com/relab/container/network"
 )
 
-const tag = "iago-test"
+const tag = "container-test"
 
 func TestPing(t *testing.T) {
 	c, err := container.NewContainer()
@@ -36,7 +36,7 @@ func TestNetworkCreateAndNetworkRemove(t *testing.T) {
 	}
 
 	resp, err := c.NetworkCreate(t.Context(), network.CreateOptions{
-		Name:   "iago-" + rand.Text()[:8],
+		Name:   "container-" + rand.Text()[:8],
 		Driver: "bridge",
 	})
 	if err != nil {
@@ -60,7 +60,7 @@ func TestContainerCreateAndStartAndInspectAndStop(t *testing.T) {
 	}
 
 	net, err := c.NetworkCreate(t.Context(), network.CreateOptions{
-		Name:   "iago-" + rand.Text()[:8],
+		Name:   "container-" + rand.Text()[:8],
 		Driver: "bridge",
 	})
 	if err != nil {
