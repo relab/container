@@ -23,7 +23,7 @@ type CreateRequest struct {
 	NetworkingConfig *network.NetworkingConfig `json:"NetworkingConfig,omitempty"`
 }
 
-// CreateResponse
+// CreateResponse is the response message returned from the server.
 //
 // OK response to ContainerCreate operation
 // swagger:model CreateResponse
